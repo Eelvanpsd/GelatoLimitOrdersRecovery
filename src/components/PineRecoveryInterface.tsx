@@ -576,138 +576,6 @@ const CONTRACT_ABI = [
   }
 ];
 
-// ERC20OrderRouter Contract ABI
-const ERC20_ROUTER_ABI = [
-  {
-    "inputs": [
-      {
-        "internalType": "contract IGelatoPineCore",
-        "name": "_gelatoPineCore",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "constructor"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "bytes32",
-        "name": "key",
-        "type": "bytes32"
-      },
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "caller",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "amount",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "address",
-        "name": "module",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "address",
-        "name": "inputToken",
-        "type": "address"
-      },
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "owner",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "address",
-        "name": "witness",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "bytes",
-        "name": "data",
-        "type": "bytes"
-      },
-      {
-        "indexed": false,
-        "internalType": "bytes32",
-        "name": "secret",
-        "type": "bytes32"
-      }
-    ],
-    "name": "DepositToken",
-    "type": "event"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "_amount",
-        "type": "uint256"
-      },
-      {
-        "internalType": "address",
-        "name": "_module",
-        "type": "address"
-      },
-      {
-        "internalType": "address",
-        "name": "_inputToken",
-        "type": "address"
-      },
-      {
-        "internalType": "address payable",
-        "name": "_owner",
-        "type": "address"
-      },
-      {
-        "internalType": "address",
-        "name": "_witness",
-        "type": "address"
-      },
-      {
-        "internalType": "bytes",
-        "name": "_data",
-        "type": "bytes"
-      },
-      {
-        "internalType": "bytes32",
-        "name": "_secret",
-        "type": "bytes32"
-      }
-    ],
-    "name": "depositToken",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "gelatoPineCore",
-    "outputs": [
-      {
-        "internalType": "contract IGelatoPineCore",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  }
-];
-
 // ERC20 Token ABI - For token balance checking
 const ERC20_ABI = [
   {
@@ -760,9 +628,6 @@ const ERC20_ABI = [
 // GelatoPineCore contract address - Avalanche Mainnet
 const CONTRACT_ADDRESS = "0x0c30D3d66bc7C73A83fdA929888c34dcb24FD599";
 
-// ERC20OrderRouter contract address - Avalanche Mainnet  
-const ERC20_ROUTER_ADDRESS = "0x3441456d5750f4a22b0DcBD434D99B97455B70Ac";
-
 // Common token addresses on Avalanche
 const COMMON_TOKENS = {
   "ETH": "0x0000000000000000000000000000000000000000",
@@ -782,7 +647,6 @@ interface OrderParams {
 const PineRecoveryInterface: React.FC = () => {
   const [provider, setProvider] = useState<ethers.providers.Web3Provider | null>(null);
   const [contract, setContract] = useState<ethers.Contract | null>(null);
-  // const [routerContract, setRouterContract] = useState<ethers.Contract | null>(null);
   const [account, setAccount] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [message, setMessage] = useState<string>('');
@@ -831,7 +695,6 @@ const PineRecoveryInterface: React.FC = () => {
       const accounts = await provider.send("eth_requestAccounts", []);
       const signer = provider.getSigner();
       const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
-      // const routerContract = new ethers.Contract(ERC20_ROUTER_ADDRESS, ERC20_ROUTER_ABI, signer);
 
       // Check if we're on Avalanche network
       const network = await provider.getNetwork();
@@ -842,7 +705,6 @@ const PineRecoveryInterface: React.FC = () => {
 
       setProvider(provider);
       setContract(contract);
-      // setRouterContract(routerContract);
       setAccount(accounts[0]);
       showMessage('Wallet connected successfully!', 'success');
       
@@ -1176,7 +1038,6 @@ const PineRecoveryInterface: React.FC = () => {
 
         {account && (
           <>
-            {/* Auto-detected Orders */}
             {/* Auto-detected Orders */}
             {scanningOrders && (
               <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
