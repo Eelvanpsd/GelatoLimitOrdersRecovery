@@ -781,7 +781,6 @@ interface OrderParams {
 
 const PineRecoveryInterface: React.FC = () => {
   const [provider, setProvider] = useState<ethers.providers.Web3Provider | null>(null);
-  const [signer, setSigner] = useState<ethers.Signer | null>(null);
   const [contract, setContract] = useState<ethers.Contract | null>(null);
   const [routerContract, setRouterContract] = useState<ethers.Contract | null>(null);
   const [account, setAccount] = useState<string>('');
@@ -842,7 +841,6 @@ const PineRecoveryInterface: React.FC = () => {
       }
 
       setProvider(provider);
-      setSigner(signer);
       setContract(contract);
       setRouterContract(routerContract);
       setAccount(accounts[0]);
@@ -852,7 +850,7 @@ const PineRecoveryInterface: React.FC = () => {
       setTimeout(() => {
         scanForActiveOrders();
       }, 1000);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Wallet connection error:', error);
       showMessage('Error connecting wallet', 'error');
     }
@@ -883,10 +881,11 @@ const PineRecoveryInterface: React.FC = () => {
         
         for (const event of ethEvents) {
           try {
-            const key = event.args._key;
+            const key = event.args?._key;
+            if (!key) continue;
             
             // Try to decode the order data
-            const decoded = await contract.decodeOrder(event.args._data);
+            const decoded = await contract.decodeOrder(event.args?._data || '0x');
             
             // Check if order still exists
             const exists = await contract.existOrder(
@@ -957,11 +956,6 @@ const PineRecoveryInterface: React.FC = () => {
         // If RPC fails, try alternative method
         showMessage('RPC limit reached, trying alternative scanning method...', 'info');
         
-        // Method 2: Check common module addresses with user's address
-        const commonModules = [
-          '0x', // Add known module addresses here if available
-        ];
-        
         // For now, show instructions to user
         showMessage('Automatic scanning limited by RPC. Please use manual entry or check your transaction history.', 'info');
       }
@@ -974,7 +968,7 @@ const PineRecoveryInterface: React.FC = () => {
         showMessage('No active orders found. You can use manual entry or check your transaction history on Snowtrace.', 'info');
       }
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error scanning for orders:', error);
       showMessage('RPC scanning failed. Please try manual entry or check fewer recent blocks.', 'error');
     } finally {
@@ -1027,7 +1021,7 @@ const PineRecoveryInterface: React.FC = () => {
         showMessage('Order not found', 'info');
         setVaultAddress('');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Order check error:', error);
       showMessage('Error checking order', 'error');
     } finally {
@@ -1061,7 +1055,7 @@ const PineRecoveryInterface: React.FC = () => {
       } else {
         showMessage('No token balance found', 'info');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Token balance check error:', error);
       showMessage('Error checking token balance', 'error');
     } finally {
@@ -1091,7 +1085,7 @@ const PineRecoveryInterface: React.FC = () => {
       } else {
         showMessage('No ETH deposit found', 'info');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('ETH deposit check error:', error);
       showMessage('Error checking ETH deposit', 'error');
     } finally {
@@ -1122,9 +1116,9 @@ const PineRecoveryInterface: React.FC = () => {
       setTokenBalance('');
       setTokenSymbol('');
       setEthDeposit('');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Cancel order error:', error);
-      showMessage('Error cancelling order: ' + error.message, 'error');
+      showMessage('Error cancelling order: ' + (error?.message || 'Unknown error'), 'error');
     } finally {
       setLoading(false);
     }
@@ -1135,11 +1129,11 @@ const PineRecoveryInterface: React.FC = () => {
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-800 mb-2">Gelato Limit Orders Recovery Tool</h1>
+          <h1 className="text-4xl font-bold text-gray-800 mb-2">Galeto Limit Orders Recovery Tool</h1>
           <p className="text-gray-600 text-lg">Cancel your locked limit orders and recover your funds</p>
           <div className="mt-4 p-4 bg-yellow-100 border border-yellow-400 rounded-lg">
             <p className="text-yellow-800">
-              ⚠️ This tool is designed to recover funds from Gelato limit orders.
+              ⚠️ This tool is designed to recover funds from Galeto limit orders contract.
             </p>
           </div>
         </div>
@@ -1480,7 +1474,7 @@ const PineRecoveryInterface: React.FC = () => {
         <div className="text-center mt-8 text-gray-600">
           <p>⚠️ Use this tool at your own risk. Carefully verify parameters before making transactions.</p>
           <p className="mt-2">
-            {' '}
+            0_o{' '}
             <a 
               href="https://x.com/Eelvanpsd" 
               target="_blank" 
