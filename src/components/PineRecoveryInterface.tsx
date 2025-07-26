@@ -782,7 +782,7 @@ interface OrderParams {
 const PineRecoveryInterface: React.FC = () => {
   const [provider, setProvider] = useState<ethers.providers.Web3Provider | null>(null);
   const [contract, setContract] = useState<ethers.Contract | null>(null);
-  const [routerContract, setRouterContract] = useState<ethers.Contract | null>(null);
+  // const [routerContract, setRouterContract] = useState<ethers.Contract | null>(null);
   const [account, setAccount] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [message, setMessage] = useState<string>('');
@@ -831,7 +831,7 @@ const PineRecoveryInterface: React.FC = () => {
       const accounts = await provider.send("eth_requestAccounts", []);
       const signer = provider.getSigner();
       const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
-      const routerContract = new ethers.Contract(ERC20_ROUTER_ADDRESS, ERC20_ROUTER_ABI, signer);
+      // const routerContract = new ethers.Contract(ERC20_ROUTER_ADDRESS, ERC20_ROUTER_ABI, signer);
 
       // Check if we're on Avalanche network
       const network = await provider.getNetwork();
@@ -842,7 +842,7 @@ const PineRecoveryInterface: React.FC = () => {
 
       setProvider(provider);
       setContract(contract);
-      setRouterContract(routerContract);
+      // setRouterContract(routerContract);
       setAccount(accounts[0]);
       showMessage('Wallet connected successfully!', 'success');
       
