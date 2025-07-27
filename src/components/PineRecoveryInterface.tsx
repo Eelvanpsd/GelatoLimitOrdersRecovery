@@ -991,11 +991,11 @@ const PineRecoveryInterface: React.FC = () => {
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-800 mb-2">Galeto Limit Orders Recovery Tool</h1>
+          <h1 className="text-4xl font-bold text-gray-800 mb-2">Gelato Limit Orders Recovery Tool</h1>
           <p className="text-gray-600 text-lg">Cancel your locked limit orders and recover your funds</p>
           <div className="mt-4 p-4 bg-yellow-100 border border-yellow-400 rounded-lg">
             <p className="text-yellow-800">
-              ⚠️ This tool is designed to recover funds from Galeto limit orders contract.
+              ⚠️ This tool is designed to recover funds from Gelato limit orders contract.
             </p>
           </div>
         </div>
