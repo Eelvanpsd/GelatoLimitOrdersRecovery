@@ -1563,7 +1563,7 @@ MethodID: 0x486046a8
                   <h3 className="font-medium text-blue-800 mb-2">💡 How to get transaction data:</h3>
                   <ul className="text-sm text-blue-700 space-y-1">
                     <li>1. Go to your Pine Finance transaction on <a href="https://snowtrace.io" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Snowtrace</a></li>
-                    <li>2. <strong>Option A:</strong> Copy the raw "Input Data" hex string (starts with 0x486046a8 or 0x3e3a1560)</li>
+                    <li>2. <strong>Option A:</strong> Click to see More)</li>
                     <li>3. <strong>Option B:</strong> Copy the entire decoded transaction view (Function: depositToken... with parameters)</li>
                     <li>4. Paste either format in the field above and click Analyze</li>
                   </ul>
