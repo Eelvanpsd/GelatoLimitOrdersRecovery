@@ -306,6 +306,49 @@ const CONTRACT_ABI = [
   {
     "inputs": [
       {
+        "internalType": "uint256",
+        "name": "_amount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "_module",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "_inputToken",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "_owner",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "_witness",
+        "type": "address"
+      },
+      {
+        "internalType": "bytes",
+        "name": "_data",
+        "type": "bytes"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "_secret",
+        "type": "bytes32"
+      }
+    ],
+    "name": "depositToken",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "address",
         "name": "_module",
         "type": "address"
@@ -644,6 +687,28 @@ interface OrderParams {
   data: string;
 }
 
+interface ParsedDepositTokenData {
+  functionName: 'depositToken';
+  params: {
+    amount?: string;
+    module?: string;
+    inputToken?: string;
+    owner?: string;
+    witness?: string;
+    data?: string;
+    secret?: string;
+  };
+}
+
+interface ParsedDepositEthData {
+  functionName: 'depositEth';
+  params: {
+    encodedOrderData?: string;
+  };
+}
+
+type ParsedTransactionData = ParsedDepositTokenData | ParsedDepositEthData;
+
 const PineRecoveryInterface: React.FC = () => {
   const [provider, setProvider] = useState<ethers.providers.Web3Provider | null>(null);
   const [contract, setContract] = useState<ethers.Contract | null>(null);
@@ -671,6 +736,14 @@ const PineRecoveryInterface: React.FC = () => {
   // Auto-detected orders
   const [detectedOrders, setDetectedOrders] = useState<any[]>([]);
   const [scanningOrders, setScanningOrders] = useState<boolean>(false);
+  
+  // Transaction analysis
+  const [inputData, setInputData] = useState<string>('');
+  const [analyzingData, setAnalyzingData] = useState<boolean>(false);
+  const [analyzedData, setAnalyzedData] = useState<any>(null);
+  
+  // Success popup state
+  const [showSuccessPopup, setShowSuccessPopup] = useState<boolean>(false);
 
   useEffect(() => {
     if (account) {
@@ -682,6 +755,11 @@ const PineRecoveryInterface: React.FC = () => {
     setMessage(msg);
     setMessageType(type);
     setTimeout(() => setMessage(''), 5000);
+  };
+
+  const showAutoFillSuccess = () => {
+    setShowSuccessPopup(true);
+    // Otomatik kapanmayı kaldırdık - sadece kullanıcı kapatabilir
   };
 
   const connectWallet = async () => {
@@ -838,6 +916,377 @@ const PineRecoveryInterface: React.FC = () => {
     }
   };
 
+  const parseDecodedTransactionData = (decodedData: string): ParsedTransactionData | null => {
+    try {
+      const lines = decodedData.trim().split('\n');
+      
+      // Extract function name
+      const functionLine = lines.find(line => line.includes('Function:'));
+      if (!functionLine) return null;
+      
+      const functionMatch = functionLine.match(/Function:\s*(\w+)/);
+      if (!functionMatch) return null;
+      
+      const functionName = functionMatch[1];
+      
+      // Only support depositToken and depositEth
+      if (functionName !== 'depositToken' && functionName !== 'depositEth') {
+        throw new Error(`Unsupported function: ${functionName}`);
+      }
+      
+      // Extract parameter values - improved parsing
+      const paramValues: string[] = [];
+      
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        
+        // Look for parameter markers like [0]:, [1]:, etc.
+        const paramMatch = line.match(/^\[(\d+)\]:\s*(.*)?$/);
+        if (paramMatch) {
+          const paramIndex = parseInt(paramMatch[1]);
+          let paramValue = paramMatch[2] || '';
+          
+          // If the value is empty or just whitespace, check the next line
+          if (!paramValue || paramValue.trim() === '') {
+            if (i + 1 < lines.length) {
+              const nextLine = lines[i + 1].trim();
+              // Skip if next line is another parameter or empty
+              if (!nextLine.match(/^\[\d+\]:/) && nextLine) {
+                paramValue = nextLine;
+              }
+            }
+          }
+          
+          // Ensure we have the right number of parameters
+          while (paramValues.length <= paramIndex) {
+            paramValues.push('');
+          }
+          
+          paramValues[paramIndex] = paramValue;
+        }
+      }
+      
+      if (functionName === 'depositToken') {
+        // depositToken parameters: _amount, _module, _inputToken, _owner, _witness, _data, _secret
+        if (paramValues.length < 7) {
+          throw new Error(`Insufficient parameters for depositToken. Found ${paramValues.length}, expected at least 7`);
+        }
+        
+        // Process the _data parameter (index 5)
+        let dataValue = '0x';
+        const dataParam = paramValues[5];
+        
+        if (dataParam) {
+          // Check if this is an offset to dynamic data
+          if (dataParam.match(/^0*[1-9a-f][0-9a-f]*0$/i) || dataParam.match(/^0*e0$/i)) {
+            // This looks like an offset, try to find the actual data
+            // Look for length parameter and subsequent data
+            if (paramValues.length > 7) {
+              let concatenatedData = '';
+              // Start from parameter 8 and concatenate data chunks
+              for (let i = 8; i < paramValues.length; i++) {
+                if (paramValues[i] && paramValues[i].match(/^[0-9a-f]+$/i)) {
+                  concatenatedData += paramValues[i];
+                }
+              }
+              
+              if (concatenatedData) {
+                dataValue = '0x' + concatenatedData;
+              }
+            }
+          } else if (dataParam.startsWith('0x') || dataParam.match(/^[0-9a-f]+$/i)) {
+            // Direct hex data
+            dataValue = dataParam.startsWith('0x') ? dataParam : '0x' + dataParam;
+          }
+        }
+        
+        return {
+          functionName: 'depositToken' as const,
+          params: {
+            amount: paramValues[0] || '',
+            module: '0x' + (paramValues[1] || '').replace(/^0x/, '').slice(-40).padStart(40, '0'),
+            inputToken: '0x' + (paramValues[2] || '').replace(/^0x/, '').slice(-40).padStart(40, '0'),
+            owner: '0x' + (paramValues[3] || '').replace(/^0x/, '').slice(-40).padStart(40, '0'),
+            witness: '0x' + (paramValues[4] || '').replace(/^0x/, '').slice(-40).padStart(40, '0'),
+            data: dataValue,
+            secret: '0x' + (paramValues[6] || '').replace(/^0x/, '')
+          }
+        };
+      } else if (functionName === 'depositEth') {
+        // depositEth parameters: _data
+        if (paramValues.length < 1) {
+          throw new Error('Insufficient parameters for depositEth');
+        }
+        
+        // For depositEth, the _data parameter contains encoded order information
+        let dataValue = paramValues[0];
+        if (!dataValue.startsWith('0x')) {
+          dataValue = '0x' + dataValue;
+        }
+        
+        return {
+          functionName: 'depositEth' as const,
+          params: {
+            encodedOrderData: dataValue
+          }
+        };
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error parsing decoded transaction data:', error);
+      throw error;
+    }
+  };
+
+  const analyzeInputData = async () => {
+    if (!provider || !inputData.trim()) {
+      showMessage('Please enter valid input data', 'error');
+      return;
+    }
+
+    setAnalyzingData(true);
+    try {
+      // Clean input data
+      let cleanInputData = inputData.trim();
+      
+      // Check if this is parsed/decoded data from Snowtrace and handle it
+      if (cleanInputData.includes('Function:') || cleanInputData.includes('MethodID:') || cleanInputData.includes('[0]:')) {
+        // Parse the decoded transaction data format
+        try {
+          const parsedData = parseDecodedTransactionData(cleanInputData);
+          if (parsedData) {
+            if (parsedData.functionName === 'depositToken') {
+              // Store analyzed data
+              setAnalyzedData({
+                inputData: cleanInputData,
+                method: parsedData.functionName,
+                params: parsedData.params
+              });
+              
+              // Auto-fill the form with extracted parameters
+              setOrderParams({
+                module: parsedData.params.module || '',
+                inputToken: parsedData.params.inputToken || '',
+                owner: parsedData.params.owner || '',
+                witness: parsedData.params.witness || '',
+                data: parsedData.params.data || ''
+              });
+              
+              showMessage(`Decoded transaction data parsed successfully! Order parameters extracted from ${parsedData.functionName}.`, 'success');
+              
+              // Show auto-fill success popup
+              setTimeout(() => {
+                showAutoFillSuccess();
+              }, 100);
+              
+              // Automatically check if the order exists
+              setTimeout(() => {
+                checkOrder();
+              }, 1500);
+              return;
+            } else if (parsedData.functionName === 'depositEth') {
+              // For depositEth, we need to decode the order data using the contract
+              const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
+              const decodedOrder = await contract.decodeOrder(parsedData.params.encodedOrderData || '0x');
+              
+              const decodedParams = {
+                module: decodedOrder.module,
+                inputToken: decodedOrder.inputToken,
+                owner: decodedOrder.owner,
+                witness: decodedOrder.witness,
+                data: decodedOrder.data,
+                secret: decodedOrder.secret
+              };
+              
+              // Store analyzed data
+              setAnalyzedData({
+                inputData: cleanInputData,
+                method: parsedData.functionName,
+                params: decodedParams
+              });
+              
+              // Auto-fill the form with extracted parameters
+              setOrderParams({
+                module: decodedParams.module,
+                inputToken: decodedParams.inputToken,
+                owner: decodedParams.owner,
+                witness: decodedParams.witness,
+                data: decodedParams.data
+              });
+              
+              showMessage(`Decoded transaction data parsed successfully! Order parameters extracted from ${parsedData.functionName}.`, 'success');
+              
+              // Show auto-fill success popup
+              setTimeout(() => {
+                showAutoFillSuccess();
+              }, 100);
+              
+              // Automatically check if the order exists
+              setTimeout(() => {
+                checkOrder();
+              }, 1500);
+              return;
+            }
+          }
+        } catch (parseError: any) {
+          console.error('Error parsing decoded data:', parseError);
+          showMessage(`Failed to parse decoded transaction data: ${parseError?.message || 'Unknown error'}`, 'error');
+          return;
+        }
+        
+        showMessage('This appears to be parsed transaction data but could not be processed. Please copy the raw "Input Data" hex string instead.', 'error');
+        return;
+      }
+      
+      // Ensure it starts with 0x
+      if (!cleanInputData.startsWith('0x')) {
+        cleanInputData = '0x' + cleanInputData;
+      }
+      
+      // Validate hex format
+      if (!/^0x[a-fA-F0-9]*$/i.test(cleanInputData)) {
+        showMessage('Invalid input data format. Please provide valid hex data starting with 0x followed by hexadecimal characters.', 'error');
+        return;
+      }
+      
+      showMessage('Analyzing input data...', 'info');
+      
+      const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
+      
+      try {
+        // Try to decode as depositEth or depositToken call data
+        const iface = new ethers.utils.Interface(CONTRACT_ABI);
+        const decoded = iface.parseTransaction({ data: cleanInputData });
+        
+        if (decoded.name === 'depositEth') {
+          // Extract order data from the _data parameter
+          const orderData = decoded.args._data;
+          const decodedOrder = await contract.decodeOrder(orderData);
+          
+          const decodedParams = {
+            module: decodedOrder.module,
+            inputToken: decodedOrder.inputToken,
+            owner: decodedOrder.owner,
+            witness: decodedOrder.witness,
+            data: decodedOrder.data,
+            secret: decodedOrder.secret
+          };
+          
+          // Store analyzed data
+          setAnalyzedData({
+            inputData: cleanInputData,
+            method: decoded.name,
+            params: decodedParams
+          });
+          
+          // Auto-fill the form with extracted parameters
+          setOrderParams({
+            module: decodedParams.module,
+            inputToken: decodedParams.inputToken,
+            owner: decodedParams.owner,
+            witness: decodedParams.witness,
+            data: decodedParams.data
+          });
+          
+          showMessage('Input data analyzed successfully! Order parameters extracted from depositEth call.', 'success');
+          
+          // Automatically check if the order exists
+          setTimeout(() => {
+            checkOrder();
+          }, 500);
+          
+        } else if (decoded.name === 'depositToken') {
+          // Handle depositToken method - parameters are directly available
+          const decodedParams = {
+            module: decoded.args._module,
+            inputToken: decoded.args._inputToken,
+            owner: decoded.args._owner,
+            witness: decoded.args._witness,
+            data: decoded.args._data,
+            secret: decoded.args._secret,
+            amount: decoded.args._amount
+          };
+          
+          // Store analyzed data
+          setAnalyzedData({
+            inputData: cleanInputData,
+            method: decoded.name,
+            params: decodedParams
+          });
+          
+          // Auto-fill the form with extracted parameters
+          setOrderParams({
+            module: decodedParams.module,
+            inputToken: decodedParams.inputToken,
+            owner: decodedParams.owner,
+            witness: decodedParams.witness,
+            data: decodedParams.data
+          });
+          
+          showMessage('Input data analyzed successfully! Order parameters extracted from depositToken call.', 'success');
+          
+          // Automatically check if the order exists
+          setTimeout(() => {
+            checkOrder();
+          }, 500);
+          
+        } else {
+          showMessage(`Input data decoded as '${decoded.name}' method, but this tool supports 'depositEth' and 'depositToken' methods only.`, 'error');
+        }
+        
+      } catch (decodeError) {
+        console.error('Error decoding input data:', decodeError);
+        
+        // Try alternative: Maybe this is already encoded order data
+        try {
+          const decodedOrder = await contract.decodeOrder(cleanInputData);
+          
+          const decodedParams = {
+            module: decodedOrder.module,
+            inputToken: decodedOrder.inputToken,
+            owner: decodedOrder.owner,
+            witness: decodedOrder.witness,
+            data: decodedOrder.data,
+            secret: decodedOrder.secret
+          };
+          
+          // Store analyzed data
+          setAnalyzedData({
+            inputData: cleanInputData,
+            method: 'Raw Order Data',
+            params: decodedParams
+          });
+          
+          // Auto-fill the form with extracted parameters
+          setOrderParams({
+            module: decodedParams.module,
+            inputToken: decodedParams.inputToken,
+            owner: decodedParams.owner,
+            witness: decodedParams.witness,
+            data: decodedParams.data
+          });
+          
+          showMessage('Input data analyzed successfully! Order parameters extracted from raw order data.', 'success');
+          
+          // Automatically check if the order exists
+          setTimeout(() => {
+            checkOrder();
+          }, 500);
+          
+        } catch (orderDecodeError) {
+          showMessage('Could not decode input data. Please ensure this is valid Pine Finance transaction input data or encoded order data.', 'error');
+        }
+      }
+      
+    } catch (error: any) {
+      console.error('Input data analysis error:', error);
+      showMessage('Error analyzing input data: ' + (error?.message || 'Unknown error'), 'error');
+    } finally {
+      setAnalyzingData(false);
+    }
+  };
+
   const loadOrderFromDetected = (order: any) => {
     setOrderParams({
       module: order.module,
@@ -988,14 +1437,43 @@ const PineRecoveryInterface: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-8 px-4">
+      {/* Success Popup */}
+      {showSuccessPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="fixed inset-0 bg-black bg-opacity-50" onClick={() => setShowSuccessPopup(false)}></div>
+          <div className="relative bg-white rounded-2xl shadow-2xl p-8 max-w-md mx-4">
+            <div className="text-center">
+              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4">
+                <svg className="h-8 w-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">✅ Auto-Fill Successful!</h3>
+              <p className="text-gray-600 mb-4">
+                All order parameters have been auto-filled successfully!
+              </p>
+              <p className="text-green-600 font-semibold text-lg">
+                🚀 Ready to cancel order!
+              </p>
+              <button
+                onClick={() => setShowSuccessPopup(false)}
+                className="mt-4 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-800 mb-2">Gelato Limit Orders Recovery Tool</h1>
-          <p className="text-gray-600 text-lg">Cancel your locked limit orders and recover your funds</p>
+          <p className="text-gray-600 text-lg">Copy transaction input data and recover your locked funds easily</p>
           <div className="mt-4 p-4 bg-yellow-100 border border-yellow-400 rounded-lg">
             <p className="text-yellow-800">
-              ⚠️ This tool is designed to recover funds from Gelato limit orders contract.
+              🚀 <strong>Simple:</strong> Just copy input data from Snowtrace → Click "Click to see More" → Copy Input Data → Paste here!
             </p>
           </div>
         </div>
@@ -1038,6 +1516,87 @@ const PineRecoveryInterface: React.FC = () => {
 
         {account && (
           <>
+            {/* Input Data Analyzer */}
+            <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+              <h2 className="text-xl font-semibold text-gray-800 mb-4">
+                🔍 Input Data Analyzer
+              </h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Copy your Pine Finance transaction's input data below and we'll automatically extract the order parameters for you!
+              </p>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Transaction Input Data
+                  </label>
+                  <div className="flex gap-3">
+                    <textarea
+                      value={inputData}
+                      onChange={(e) => setInputData(e.target.value)}
+                      placeholder="Paste decoded format:
+Decoded: Function: depositToken(uint256 _amount, address _module...)
+MethodID: 0x486046a8
+[0]: 000000000000000000000000000000000000000000000000000000001dcd6500..."
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none h-32"
+                      onPaste={(e) => {
+                        // Auto-clean pasted data
+                        setTimeout(() => {
+                          const pastedText = e.currentTarget.value.trim();
+                          if (pastedText && !pastedText.startsWith('0x')) {
+                            setInputData('0x' + pastedText);
+                          }
+                        }, 0);
+                      }}
+                    />
+                    <button
+                      onClick={analyzeInputData}
+                      disabled={analyzingData || !inputData.trim()}
+                      className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors self-start"
+                    >
+                      {analyzingData ? 'Analyzing...' : 'Analyze'}
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <h3 className="font-medium text-blue-800 mb-2">💡 How to get transaction data:</h3>
+                  <ul className="text-sm text-blue-700 space-y-1">
+                    <li>1. Go to your Pine Finance transaction on <a href="https://snowtrace.io" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Snowtrace</a></li>
+                    <li>2. <strong>Option A:</strong> Copy the raw "Input Data" hex string (starts with 0x486046a8 or 0x3e3a1560)</li>
+                    <li>3. <strong>Option B:</strong> Copy the entire decoded transaction view (Function: depositToken... with parameters)</li>
+                    <li>4. Paste either format in the field above and click Analyze</li>
+                  </ul>
+                  <div className="mt-2 p-2 bg-green-50 border border-green-300 rounded">
+                    <p className="text-xs text-green-800">
+                      ✅ <strong>New:</strong> Decoded transaction parameters are now supported!
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <h3 className="font-medium text-green-800 mb-2">✅ What this tool supports:</h3>
+                  <ul className="text-sm text-green-700 space-y-1">
+                    <li>• Decoded transaction parameters (Function: depositToken/depositEth format)</li>
+                    <li>• GelatoPineCore <code className="bg-white px-1 rounded text-xs">depositEth</code> and <code className="bg-white px-1 rounded text-xs">depositToken</code> methods</li>
+                    <li>• Automatically extracts: module, inputToken, owner, witness, data parameters</li>
+                  </ul>
+                </div>
+                
+                {analyzedData && (
+                  <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                    <h3 className="font-medium text-green-800 mb-2">✅ Input Data Analysis Complete</h3>
+                    <div className="text-sm text-green-700 space-y-1">
+                      <div><strong>Method:</strong> {analyzedData.method}</div>
+                      <div><strong>Module:</strong> <code className="bg-white px-1 rounded text-xs">{analyzedData.params.module ? `${analyzedData.params.module.slice(0, 10)}...${analyzedData.params.module.slice(-8)}` : 'N/A'}</code></div>
+                      <div><strong>Owner:</strong> <code className="bg-white px-1 rounded text-xs">{analyzedData.params.owner ? `${analyzedData.params.owner.slice(0, 10)}...${analyzedData.params.owner.slice(-8)}` : 'N/A'}</code></div>
+                      <div><strong>Status:</strong> Order parameters have been auto-filled below</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Auto-detected Orders */}
             {scanningOrders && (
               <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
@@ -1138,9 +1697,10 @@ const PineRecoveryInterface: React.FC = () => {
                     <h3 className="font-medium text-yellow-800 mb-2">🔍 How to Find Your Orders Manually:</h3>
                     <ol className="text-sm text-yellow-700 space-y-2">
                       <li>1. Visit <a href={`https://snowtrace.io/address/${account}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">your address on Snowtrace</a></li>
-                      <li>2. Look for transactions to Pine Finance contracts</li>
-                      <li>3. Find your limit order creation transaction</li>
-                      <li>4. Copy the parameters and enter them below</li>
+                      <li>2. Look for transactions to Pine Finance contracts (see addresses below)</li>
+                      <li>3. Click on your limit order creation transaction</li>
+                      <li>4. Click <strong>"Click to see More"</strong> in transaction details</li>
+                      <li>5. Copy the <strong>Input Data</strong> and use the Input Data Analyzer above</li>
                     </ol>
                   </div>
                   
@@ -1155,10 +1715,10 @@ const PineRecoveryInterface: React.FC = () => {
               </div>
             )}
 
-            {/* Manual Order Entry */}
+            {/* Manual Order Entry / Verification */}
             <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold text-gray-800">Manual Order Entry</h2>
+                <h2 className="text-xl font-semibold text-gray-800">Order Parameters & Verification</h2>
                 <button
                   onClick={scanForActiveOrders}
                   disabled={scanningOrders}
@@ -1168,7 +1728,7 @@ const PineRecoveryInterface: React.FC = () => {
                 </button>
               </div>
               <p className="text-sm text-gray-600 mb-4">
-                If your order wasn't detected automatically, you can enter the parameters manually:
+                These parameters are auto-filled from transaction analysis or you can enter them manually:
               </p>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1189,25 +1749,20 @@ const PineRecoveryInterface: React.FC = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Input Token
                   </label>
-                  <select
+                  <input
+                    type="text"
                     value={orderParams.inputToken}
                     onChange={(e) => setOrderParams(prev => ({ ...prev, inputToken: e.target.value }))}
+                    placeholder="0x0000000000000000000000000000000000000000 (ETH/AVAX) or token address"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value={COMMON_TOKENS.ETH}>ETH/AVAX</option>
-                    <option value={COMMON_TOKENS.WAVAX}>WAVAX</option>
-                    <option value={COMMON_TOKENS.USDC}>USDC</option>
-                    <option value={COMMON_TOKENS.USDT}>USDT</option>
-                    <option value="">Custom Address</option>
-                  </select>
-                  {orderParams.inputToken === '' && (
-                    <input
-                      type="text"
-                      onChange={(e) => setOrderParams(prev => ({ ...prev, inputToken: e.target.value }))}
-                      placeholder="Enter token address"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent mt-2"
-                    />
-                  )}
+                  />
+                  <div className="mt-2 text-xs text-gray-500">
+                    <p><strong>Common tokens:</strong></p>
+                    <p>• ETH/AVAX: <code className="bg-gray-100 px-1 rounded">0x0000000000000000000000000000000000000000</code></p>
+                    <p>• WAVAX: <code className="bg-gray-100 px-1 rounded">0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7</code></p>
+                    <p>• USDC: <code className="bg-gray-100 px-1 rounded">0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E</code></p>
+                    <p>• USDT: <code className="bg-gray-100 px-1 rounded">0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7</code></p>
+                  </div>
                 </div>
 
                 <div>
@@ -1254,9 +1809,9 @@ const PineRecoveryInterface: React.FC = () => {
 
             {/* Actions */}
             <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-              <h2 className="text-xl font-semibold text-gray-800 mb-4">Manual Actions</h2>
+              <h2 className="text-xl font-semibold text-gray-800 mb-4">Order Actions</h2>
               <p className="text-sm text-gray-600 mb-4">
-                Use these if you prefer to manually check specific order parameters:
+                Check your order status and cancel it to recover your funds:
               </p>
               
               <div className="flex flex-wrap gap-4">
